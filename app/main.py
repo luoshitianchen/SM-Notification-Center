@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 VERSION = "1.0.0"
 SERVICE_NAME = "sm-notification-center"
 DISPLAY_NAME = "SM Notification Center"
-DESCRIPTION = "统一消息与通知中心"
+DESCRIPTION = "消息通知中心：站内信、短信、邮件与推送渠道编排"
 ENVIRONMENT = os.getenv("SM_ENV", "development").lower()
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("SM_ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if h.strip()]
 REQUESTS = {"total": 0, "errors": 0, "latency_ms_total": 0.0}
@@ -38,7 +38,7 @@ AUDIT_CENTER_URL = os.getenv("SM_AUDIT_CENTER_URL", "")
 INTEGRATION_DEPENDENCIES = ['sm-iam', 'sm-audit-log-center']
 INTEGRATION_EVENTS = ["health.checked", "resource.changed", "audit.recorded"]
 _db_conn: sqlite3.Connection | None = None
-_db_lock = threading.Lock()
+_db_lock = threading.RLock()
 
 
 def db() -> sqlite3.Connection:
