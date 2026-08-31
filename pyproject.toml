@@ -1,0 +1,16 @@
+[project]
+name = "SM-Notification-Center"
+version = "2.0.0"
+description = "企业通知中心：渠道、模板、消息发送与投递回执"
+requires-python = ">=3.11"
+
+[tool.ruff]
+line-length = 200
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
