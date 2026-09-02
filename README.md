@@ -1,6 +1,6 @@
 # SM-Notification-Center
 
-企业通知中心：渠道、模板、消息发送与投递回执。
+企业通知中心：渠道、模板、消息发送、投递回执与安全告警专线。
 
 ## 本地运行
 
@@ -8,7 +8,7 @@
 git clone https://github.com/luoshitianchen/SM-Notification-Center.git
 cd SM-Notification-Center
 py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\\.venv\\Scripts\\Activate.ps1
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8470
 ```
@@ -20,7 +20,8 @@ uvicorn app.main:app --reload --port 8470
 - 渠道管理
 - 消息模板
 - 消息发送
-- 投递回执
+- 投递回执与重试
+- 安全告警专线（`POST /api/notifications/alert`）
 - `/health` 健康探针、`/readyz` 就绪探针
 - `/api/overview` 业务概览、`/api/ops/metrics` 运维指标、`/metrics` Prometheus 指标
 - `/api/integration/manifest` 服务契约、`/api/security/baseline` 安全基线
@@ -29,6 +30,12 @@ uvicorn app.main:app --reload --port 8470
 - 审计事件本地落库并异步转发集中审计中心
 - Docker 只读文件系统、能力剥离、进程限制
 - GitHub Actions CI 与安全扫描（pip-audit / bandit / ruff / SBOM / gitleaks）
+
+## 安全告警专线
+
+- `POST /api/notifications/alert`：接收集中审计中心（或任意纳管服务）推送的异常告警。
+- 自动确保 `security-alert` 渠道存在（inapp，即时投递），告警以 `[级别] 审计告警 规则` 标题入台账。
+- 需携带 `X-Internal-Token`；统计见 `/api/notifications/stats`（`alerts` 计数）与 `/api/overview`。
 
 ## 安全说明
 

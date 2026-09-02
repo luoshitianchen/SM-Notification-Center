@@ -1,4 +1,4 @@
-"""SM Notification Center 领域测试：渠道、模板、发送、投递回执与统计。"""
+"""SM Notification Center 领域测试：渠道、模板、发送、投递回执、统计与安全告警专线。"""
 
 import pytest
 from fastapi.testclient import TestClient
@@ -75,3 +75,30 @@ def test_manifest_and_crypto(client):
 def test_write_requires_auth(client):
     del client.headers["X-Internal-Token"]
     assert client.post("/api/notifications/channels", json={"name": "c", "channel_type": "email"}).status_code == 401
+
+
+# --------------------------------------------------------------------------- #
+# 安全告警专线
+# --------------------------------------------------------------------------- #
+def test_alert_ingest(client):
+    r = client.post("/api/notifications/alert", json={
+        "alert_id": "al-0001", "rule": "unknown_service", "severity": "high",
+        "service": "sm-erp", "actor": "admin", "event_id": "evt-0001", "detail": "未登记服务上报",
+    })
+    assert r.status_code == 201
+    assert r.json()["status"] == "delivered"
+    # 自动创建 security-alert 渠道
+    channels = client.get("/api/notifications/channels").json()
+    assert any(c["name"] == "security-alert" for c in channels["items"])
+    # 告警入台账并可查询
+    notif = client.get(f"/api/notifications/{r.json()['id']}").json()
+    assert notif["channel"] == "security-alert"
+    assert "[HIGH]" in notif["subject"]
+    assert client.get("/api/notifications/stats").json()["alerts"] == 1
+
+
+def test_alert_requires_auth(client):
+    del client.headers["X-Internal-Token"]
+    assert client.post("/api/notifications/alert", json={
+        "alert_id": "al-0002", "rule": "rate_burst", "severity": "medium", "service": "sm-erp",
+    }).status_code == 401

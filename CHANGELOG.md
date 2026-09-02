@@ -1,8 +1,14 @@
 # Changelog
 
+## 2.1.0 - 2026-09-02
+
+- 新增安全告警专线 `POST /api/notifications/alert`：接收集中审计中心（或任意纳管服务）推送的异常告警，自动创建 `security-alert` 渠道（inapp），即时投递并落库入台账。
+- `/api/notifications/stats` 增加 `alerts` 计数；`/api/overview` 增加 alerts 概览；manifest 事件增加 `alert.ingested`。
+- 新增 2 个告警专线测试，测试套件 11 用例全部通过。
+
 ## 2.0.0 - 2026-08-31
 
-- 落地真实领域能力：企业通知中心：渠道、模板、消息发送与投递回执。
+- 落地真实领域能力：企业通知中心：渠道、模板、消息发送、投递回执。
 - 抽取共享企业基础层 `app/base.py`：安全中间件、限流、请求体限制、国密 SM3/SM4-CBC（带 SM3 MAC 完整性校验）、JWT、审计转发与指标统一承载。
 - 修复安全缺陷：SM4 密钥不再明文落库（仅环境变量/KMS 注入）；密文增加完整性 MAC；生产环境未配置凭据时 fail-closed。
 - 统一版本到 2.0.0，消除代码 / VERSION 文件 / 服务目录三处版本漂移。
