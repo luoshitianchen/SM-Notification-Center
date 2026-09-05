@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from app import base
 
 SERVICE = "sm-notification-center"
-VERSION = "2.0.0"
+VERSION = "3.0.0"
 NAME = "SM Notification Center"
 DESCRIPTION = "企业通知中心：渠道、模板、消息发送与投递回执"
 PORT = 8470
