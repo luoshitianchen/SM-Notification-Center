@@ -1,4 +1,4 @@
-"""SM Notification Center —— 企业通知中心：渠道、模板、消息发送、投递回执与安全告警专线。"""
+"""SM Notification Center —— 企业通知中心：渠道、模板、消息发送与投递回执。"""
 
 from __future__ import annotations
 
@@ -13,11 +13,10 @@ from pydantic import BaseModel, Field
 from app import base
 
 SERVICE = "sm-notification-center"
-VERSION = "2.1.0"
+VERSION = "3.0.0"
 NAME = "SM Notification Center"
-DESCRIPTION = "企业通知中心：渠道、模板、消息发送、投递回执与安全告警专线"
+DESCRIPTION = "企业通知中心：渠道、模板、消息发送与投递回执"
 PORT = 8470
-ALERT_CHANNEL = "security-alert"
 
 
 def _now() -> str:
@@ -50,14 +49,13 @@ def _init() -> None:
 app = base.create_app(
     service=SERVICE, name=NAME, description=DESCRIPTION, version=VERSION, port=PORT,
     dependencies=["sm-iam", "sm-event-bus", "sm-audit-log-center"],
-    events=["notification.sent", "notification.failed", "notification.delivered", "alert.ingested"],
+    events=["notification.sent", "notification.failed", "notification.delivered"],
     overview_fn=lambda _r: {
         "summary": {
             "channels": base.get_db().execute("SELECT COUNT(*) FROM channels").fetchone()[0],
             "templates": base.get_db().execute("SELECT COUNT(*) FROM templates").fetchone()[0],
             "sent": base.get_db().execute("SELECT COUNT(*) FROM notifications WHERE status='sent'").fetchone()[0],
             "failed": base.get_db().execute("SELECT COUNT(*) FROM notifications WHERE status='failed'").fetchone()[0],
-            "alerts": base.get_db().execute("SELECT COUNT(*) FROM notifications WHERE channel=? AND status='delivered'", (ALERT_CHANNEL,)).fetchone()[0],
         }
     },
 )
@@ -84,19 +82,6 @@ class SendIn(BaseModel):
     subject: str | None = Field(default=None, max_length=200)
     body: str | None = Field(default=None, max_length=4000)
     payload: dict[str, Any] = Field(default_factory=dict)
-
-
-class AlertIn(BaseModel):
-    """安全告警专线：由集中审计中心（或任意纳管服务）推送异常告警。"""
-
-    alert_id: str = Field(min_length=1, max_length=64)
-    rule: str = Field(min_length=1, max_length=64)
-    severity: str = Field(pattern=r"^(high|medium|low)$")
-    service: str = Field(min_length=1, max_length=64)
-    actor: str = Field(default="", max_length=120)
-    event_id: str = Field(default="", max_length=64)
-    detail: str = Field(default="", max_length=2000)
-    detected_at: str = Field(default="", max_length=40)
 
 
 def _render(template: str, payload: dict[str, Any]) -> str:
@@ -172,29 +157,6 @@ def send_notification(payload: SendIn, request: Request) -> dict[str, Any]:
     return {"id": notif_id, "channel": payload.channel, "recipient": payload.recipient, "status": status_}
 
 
-@app.post("/api/notifications/alert", status_code=status.HTTP_201_CREATED)
-def ingest_alert(payload: AlertIn, request: Request) -> dict[str, Any]:
-    """安全告警专线：接收集中审计中心推送的异常告警并即时入台账（inapp 投递）。"""
-    base.require_internal_token(request)
-    with base.db_ctx() as conn:
-        channel = conn.execute("SELECT * FROM channels WHERE name=?", (ALERT_CHANNEL,)).fetchone()
-        if not channel:
-            channel_id = str(uuid.uuid4())
-            conn.execute(
-                "INSERT INTO channels (id, name, channel_type, config, enabled, created_at) VALUES (?,?,?,?,?,?)",
-                (channel_id, ALERT_CHANNEL, "inapp", "{}", 1, _now()),
-            )
-        subject = f"[{payload.severity.upper()}] 审计告警 {payload.rule}"
-        body = f"规则: {payload.rule}\n级别: {payload.severity}\n服务: {payload.service}\n操作者: {payload.actor}\n事件: {payload.event_id}\n详情: {payload.detail}"
-        notif_id = str(uuid.uuid4())
-        conn.execute(
-            "INSERT INTO notifications (id, channel, template, recipient, subject, body, status, attempts, error, created_at, sent_at, delivered_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (notif_id, ALERT_CHANNEL, None, "security-ops", subject, body, "delivered", 1, None, _now(), _now(), _now()),
-        )
-        base.record_audit("alert.ingested", "internal", f"rule={payload.rule} alert={payload.alert_id}", getattr(request.state, "request_id", ""), getattr(request.state, "trace_id", ""), SERVICE)
-    return {"id": notif_id, "channel": ALERT_CHANNEL, "subject": subject, "status": "delivered"}
-
-
 @app.get("/api/notifications")
 def list_notifications(status_: str | None = None, limit: int = 50) -> dict[str, Any]:
     limit = max(1, min(200, limit))
@@ -216,7 +178,6 @@ def stats() -> dict[str, Any]:
             "sent": _count("SELECT COUNT(*) FROM notifications WHERE status='sent'"),
             "delivered": _count("SELECT COUNT(*) FROM notifications WHERE status='delivered'"),
             "failed": _count("SELECT COUNT(*) FROM notifications WHERE status='failed'"),
-            "alerts": _count("SELECT COUNT(*) FROM notifications WHERE channel='" + ALERT_CHANNEL + "' AND status='delivered'"),
             "total": _count("SELECT COUNT(*) FROM notifications"),
         }
 
