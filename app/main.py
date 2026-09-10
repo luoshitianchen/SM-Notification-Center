@@ -84,10 +84,51 @@ class SendIn(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
+class AlertIn(BaseModel):
+    """安全告警专线入参：审计中心检测到异常后推送。"""
+
+    alert_id: str = Field(min_length=1, max_length=64)
+    rule: str = Field(min_length=1, max_length=80)
+    severity: str = Field(pattern=r"^(high|medium|low)$")
+    service: str = Field(min_length=1, max_length=64)
+    actor: str | None = Field(default=None, max_length=120)
+    event_id: str | None = Field(default=None, max_length=64)
+    detail: str | None = Field(default=None, max_length=4000)
+    detected_at: str | None = Field(default=None, max_length=40)
+
+
 def _render(template: str, payload: dict[str, Any]) -> str:
     for key, value in payload.items():
         template = template.replace("{{" + key + "}}", str(value))
     return template
+
+
+@app.post("/api/notifications/alert", status_code=status.HTTP_201_CREATED)
+def receive_alert(payload: AlertIn, request: Request) -> dict[str, Any]:
+    """安全告警专线：接收审计中心推送的异常告警，自动落账到 security-alert 渠道。"""
+    base.require_internal_token(request)
+    with base.db_ctx() as conn:
+        # channels.name 有 UNIQUE 约束，先查后建 / INSERT OR IGNORE 幂等创建
+        conn.execute(
+            "INSERT OR IGNORE INTO channels (id, name, channel_type, config, enabled, created_at) VALUES (?,?,?,?,?,?)",
+            (str(uuid.uuid4()), "security-alert", "webhook", "{}", 1, _now()),
+        )
+        notif_id = str(uuid.uuid4())
+        subject = f"[{payload.severity.upper()}] {payload.rule} - {payload.service}"
+        body = payload.detail or (
+            f"rule={payload.rule} service={payload.service} actor={payload.actor or ''} event={payload.event_id or ''}"
+        )
+        now = _now()
+        conn.execute(
+            "INSERT INTO notifications (id, channel, template, recipient, subject, body, status, attempts, error, created_at, sent_at, delivered_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (notif_id, "security-alert", None, "security-ops", subject, body, "delivered", 1, None, now, now, now),
+        )
+        base.record_audit(
+            "notification.alert", "internal",
+            f"alert_id={payload.alert_id} rule={payload.rule} severity={payload.severity}",
+            getattr(request.state, "request_id", ""), getattr(request.state, "trace_id", ""), SERVICE,
+        )
+    return {"id": notif_id, "status": "delivered"}
 
 
 @app.get("/api/notifications/channels")
@@ -179,6 +220,7 @@ def stats() -> dict[str, Any]:
             "delivered": _count("SELECT COUNT(*) FROM notifications WHERE status='delivered'"),
             "failed": _count("SELECT COUNT(*) FROM notifications WHERE status='failed'"),
             "total": _count("SELECT COUNT(*) FROM notifications"),
+            "alerts": _count("SELECT COUNT(*) FROM notifications WHERE channel='security-alert'"),
         }
 
 
